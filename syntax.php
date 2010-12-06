@@ -135,15 +135,12 @@ class syntax_plugin_ifauth extends DokuWiki_Syntax_Plugin {
                         }
                     }
                     if ($rend>0) {
-                        $r = p_render('xhtml',p_get_instructions($match),$info);
-                        // Remove '\n<b>\n' from start and '\n</b>\n' from the end.
-                        if (stristr(substr($r,0,5),"\n<p>\n")) {
-                            $r = substr($r,5);
+                        $ins = p_get_instructions($match);
+                        array_shift($ins); //drop document_start
+                        array_pop($ins); //drop document_end
+                        foreach($ins as $i){
+                            call_user_func_array(array($renderer,$i[0]),$i[1]);
                         }
-                        if (stristr(substr($r,-7)," \n</p>\n")) {
-                            $r = substr($r,0,-7);
-                        }
-                        $renderer->doc .= $r;
                     }
                     $renderer->nocache();
                     break;
