@@ -17,20 +17,6 @@ require_once(DOKU_PLUGIN.'syntax.php');
 class syntax_plugin_ifauth extends DokuWiki_Syntax_Plugin {
 
     /**
-     * return some info
-     */
-    function getInfo(){
-        return array(
-                'author' => 'Otto Vainio',
-                'email'  => 'oiv-ifauth@valjakko.net',
-                'date'   => '2005-09-23',
-                'name'   => 'ifauth plugin',
-                'desc'   => 'Show content at this time',
-                'url'    => 'http://wiki.splitbrain.org/wiki:plugins',
-                );
-    }
-
-    /**
      * What kind of syntax are we?
      */
     function getType(){
