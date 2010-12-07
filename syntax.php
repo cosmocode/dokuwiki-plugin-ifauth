@@ -20,8 +20,13 @@ class syntax_plugin_ifauth extends DokuWiki_Syntax_Plugin {
      * What kind of syntax are we?
      */
     function getType(){
-        return 'substition';
+        return 'container';
     }
+
+    function accepts($mode){
+        return true;
+    }
+
     /**
      * Paragraph Type
      *
@@ -35,11 +40,23 @@ class syntax_plugin_ifauth extends DokuWiki_Syntax_Plugin {
      * @see Doku_Handler_Block
      */
     function getPType() {
-        return 'normal';
+        return 'stack';
+    }
+
+    function getAllowedTypes() {
+        return array(
+            'container',
+            'formatting',
+            'substition',
+            'protected',
+            'disabled',
+            'paragraphs',
+            'baseonly',
+        );
     }
 
     function getSort(){
-        return 360;
+        return 196;
     }
     function connectTo($mode) {
         $this->Lexer->addEntryPattern('<ifauth.*?>(?=.*?\x3C/ifauth\x3E)',$mode,'plugin_ifauth');
@@ -58,84 +75,89 @@ class syntax_plugin_ifauth extends DokuWiki_Syntax_Plugin {
 
                 // remove <ifauth and >
                 $auth  = trim(substr($match, 8, -1));
-
                 // explode wanted auths
-                $aauth = explode(",",$auth);
-                return array($state, $aauth);
-            case DOKU_LEXER_UNMATCHED :  return array($state, $match);
-            case DOKU_LEXER_EXIT :       return array($state, '');
+                $this->aauth = explode(",",$auth);
+
+                // FIXME remember aauth here
+
+                $ReWriter = new Doku_Handler_Nest($handler->CallWriter,'plugin_ifauth');
+                $handler->CallWriter = & $ReWriter;
+
+                // don't add any plugin instruction:
+                return false;
+
+            case DOKU_LEXER_UNMATCHED :
+                // unmatched data is cdata
+                $handler->_addCall('cdata', array($match), $pos);
+                // don't add any plugin instruction:
+                return false;
+
+            case DOKU_LEXER_EXIT :
+                // get all calls we intercepted
+                $calls = $handler->CallWriter->calls;
+
+                // switch back to the old call writer
+                $ReWriter = & $handler->CallWriter;
+                $handler->CallWriter = & $ReWriter->CallWriter;
+
+                // return a plugin instruction
+                return array($state, $calls, $this->aauth);
         }
-        return array();
+        return false;
     }
 
     /**
      * Create output
      */
     function render($mode, &$renderer, $data) {
-
-        // ifauth stoes wanted user/group array
-        global $ifauth;
-
-        // grps hold curren user groups and userid
-        global $grps;
         global $INFO;
-        if($mode == 'xhtml'){
-            list($state, $match) = $data;
-            switch ($state) {
-                case DOKU_LEXER_ENTER :
 
-                    // Store wanted groups/userid
-                    $ifauth=$match;
+        // we can't cache here
+        $renderer->nocache();
 
-                    // Store current user info. Add '@' to the group names
-                    $grps=array();
-                    if (is_array($INFO['userinfo'])) {
-                        foreach($INFO['userinfo']['grps'] as $val) {
-                            $grps[]="@" . $val;
-                        }
-                    }
-                    $grps[]=$_SERVER['REMOTE_USER'];
-                    break;
-                case DOKU_LEXER_UNMATCHED :
-                    $rend=0;
+        list($state, $calls, $aauth) = $data;
+        if($state != DOKU_LEXER_EXIT) return true;
 
-                    // Loop through each wanted user / group
-                    foreach($ifauth as $val) {
-                        $not=0;
-
-                        // Check negation
-                        if (substr($val,0,1)=="!") {
-                            $not=1;
-                            $val=substr($val,1);
-                        }
-                        // FIXME More complicated rules may be wanted. Currently any rule that matches for render overrides others.
-
-                        // If current user/group found in wanted groups/userid, then render.
-                        if ($not==0 && in_array($val,$grps)) {
-                            $rend=1;
-                        }
-
-                        // If user set as not wanted (!) or not found from current user/group then render.
-                        if ($not==1 && !in_array($val,$grps)) {
-                            $rend=1;
-                        }
-                    }
-                    if ($rend>0) {
-                        $ins = p_get_instructions($match);
-                        array_shift($ins); //drop document_start
-                        array_pop($ins); //drop document_end
-                        foreach($ins as $i){
-                            call_user_func_array(array($renderer,$i[0]),$i[1]);
-                        }
-                    }
-                    $renderer->nocache();
-                    break;
-                case DOKU_LEXER_EXIT :
-                    break;
+        // Store current user info. Add '@' to the group names
+        $grps=array();
+        if (is_array($INFO['userinfo'])) {
+            foreach($INFO['userinfo']['grps'] as $val) {
+                $grps[] = "@".$val;
             }
-            return true;
         }
-        return false;
+        $grps[]=$_SERVER['REMOTE_USER'];
+
+        $rend = false;
+        // Loop through each wanted user / group
+        foreach($aauth as $val) {
+            $not = false;
+
+            // Check negation
+            if (substr($val,0,1)=="!") {
+                $not = true;
+                $val = substr($val,1);
+            }
+            // FIXME More complicated rules may be wanted. Currently any rule that matches for render overrides others.
+
+
+            // If current user/group found in wanted groups/userid, then render.
+            if (!$not && in_array($val,$grps)) {
+                $rend = true;
+            }
+
+            // If user set as not wanted (!) or not found from current user/group then render.
+            if ($not && !in_array($val,$grps)) {
+                $rend = true;
+            }
+        }
+        // if user is authenticated, render the instructions
+        if ($rend) {
+            foreach($calls as $i){
+                if(method_exists($renderer,$i[0])){
+                    call_user_func_array(array($renderer,$i[0]),$i[1]);
+                }
+            }
+        }
+        return true;
     }
 }
-?>
